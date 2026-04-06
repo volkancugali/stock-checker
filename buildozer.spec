@@ -15,9 +15,6 @@ orientation = portrait
 fullscreen = 0
 android.archs = arm64-v8a
 
-# Arka planda çalışmaya devam etsin
-android.services = StockService:main.py:foreground
-
 [buildozer]
 log_level = 2
 warn_on_root = 1

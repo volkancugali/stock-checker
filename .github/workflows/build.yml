@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: |
-          pip install "buildozer==1.5.0" "cython<3" setuptools
+          pip install "buildozer==1.5.0" "cython<3" "pyjnius==1.6.1" setuptools
           sudo apt install -y autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
       - run: |
           cd $GITHUB_WORKSPACE

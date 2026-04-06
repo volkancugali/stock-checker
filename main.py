@@ -1,5 +1,5 @@
 """
-Stok Takipçisi — Kivy (Android APK) versiyonu
+Stok Takipçisi — Kivy + Plyer (Android APK) versiyonu
 """
 
 from kivy.app import App
@@ -8,12 +8,9 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.checkbox import CheckBox
-from kivy.uix.spinner import Spinner
 from kivy.uix.popup import Popup
 from kivy.clock import Clock
 from kivy.core.window import Window
-from kivy.utils import platform
 from kivy.metrics import dp
 
 import threading
@@ -22,75 +19,31 @@ import ssl
 import urllib.request
 from datetime import datetime
 
-# Android bildirim ve titreşim
-if platform == "android":
-    from jnius import autoclass
-    from android import mActivity
-
-    PythonActivity = autoclass("org.kivy.android.PythonActivity")
-    Context = autoclass("android.content.Context")
-    NotificationBuilder = autoclass("android.app.Notification$Builder")
-    NotificationManager = autoclass("android.app.NotificationManager")
-    NotificationChannel = autoclass("android.app.NotificationChannel")
-    Vibrator = autoclass("android.os.Vibrator")
-    VibrationEffect = autoclass("android.os.VibrationEffect")
-    Intent = autoclass("android.content.Intent")
-    Uri = autoclass("android.net.Uri")
-    PendingIntent = autoclass("android.app.PendingIntent")
-    Build = autoclass("android.os.Build")
-    Color = autoclass("android.graphics.Color")
+try:
+    from plyer import notification, vibrator
+    HAS_PLYER = True
+except ImportError:
+    HAS_PLYER = False
 
 
-CHANNEL_ID = "stock_checker"
-
-
-def android_notify(title, message, url=""):
-    if platform != "android":
+def notify(title, message):
+    if not HAS_PLYER:
         return
     try:
-        context = mActivity.getApplicationContext()
-        manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
-
-        # Notification channel (Android 8+)
-        if Build.VERSION.SDK_INT >= 26:
-            channel = NotificationChannel(
-                CHANNEL_ID, "Stok Bildirimi", NotificationManager.IMPORTANCE_HIGH
-            )
-            channel.enableVibration(True)
-            manager.createNotificationChannel(channel)
-
-        builder = NotificationBuilder(context, CHANNEL_ID)
-        builder.setContentTitle(title)
-        builder.setContentText(message)
-        builder.setSmallIcon(context.getApplicationInfo().icon)
-        builder.setAutoCancel(True)
-        builder.setPriority(2)  # PRIORITY_HIGH
-
-        # Tıklayınca URL aç
-        if url:
-            intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            pi = PendingIntent.getActivity(
-                context, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.setContentIntent(pi)
-
-        manager.notify(1, builder.build())
-    except Exception as e:
-        print(f"Bildirim hatası: {e}")
+        notification.notify(
+            title=title,
+            message=message,
+            timeout=30
+        )
+    except Exception:
+        pass
 
 
-def android_vibrate(ms=1000):
-    if platform != "android":
+def vibrate(duration=1.0):
+    if not HAS_PLYER:
         return
     try:
-        context = mActivity.getApplicationContext()
-        vibrator = context.getSystemService(Context.VIBRATOR_SERVICE)
-        if Build.VERSION.SDK_INT >= 26:
-            effect = VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE)
-            vibrator.vibrate(effect)
-        else:
-            vibrator.vibrate(ms)
+        vibrator.vibrate(duration)
     except Exception:
         pass
 
@@ -144,29 +97,26 @@ class StockCheckerApp(App):
 
         root = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(12))
 
-        # Başlık
         root.add_widget(Label(
-            text="🛒 Stok Takipçisi",
-            font_size=dp(24), size_hint_y=None, height=dp(40),
-            bold=True, color=(1, 1, 1, 1)
+            text="[b]Stok Takipçisi[/b]", markup=True,
+            font_size=dp(22), size_hint_y=None, height=dp(40),
+            color=(1, 1, 1, 1)
         ))
 
-        # URL input
         root.add_widget(Label(
-            text="Ürün URL'si:", font_size=dp(14),
-            size_hint_y=None, height=dp(24), halign="left",
+            text="Ürün URL:", font_size=dp(13),
+            size_hint_y=None, height=dp(22), halign="left",
             color=(0.7, 0.7, 0.7, 1)
         ))
         self.url_input = TextInput(
             hint_text="https://www.sanalcadir.com/...",
             multiline=False, size_hint_y=None, height=dp(44),
-            font_size=dp(13), background_color=(0.2, 0.2, 0.22, 1),
+            font_size=dp(12), background_color=(0.2, 0.2, 0.22, 1),
             foreground_color=(1, 1, 1, 1), cursor_color=(0.3, 0.6, 1, 1),
             padding=[dp(10), dp(10)]
         )
         root.add_widget(self.url_input)
 
-        # Interval
         interval_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
         interval_row.add_widget(Label(
             text="Her", font_size=dp(14), size_hint_x=0.15,
@@ -181,15 +131,14 @@ class StockCheckerApp(App):
         )
         interval_row.add_widget(self.interval_input)
         interval_row.add_widget(Label(
-            text="dakikada bir kontrol et", font_size=dp(14),
+            text="dk'da bir kontrol et", font_size=dp(14),
             size_hint_x=0.6, color=(0.7, 0.7, 0.7, 1)
         ))
         root.add_widget(interval_row)
 
-        # Butonlar
         btn_row = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
         self.start_btn = Button(
-            text="▶  Başlat", font_size=dp(16),
+            text="Baslat", font_size=dp(16),
             background_color=(0.18, 0.55, 0.34, 1),
             background_normal=""
         )
@@ -197,7 +146,7 @@ class StockCheckerApp(App):
         btn_row.add_widget(self.start_btn)
 
         self.stop_btn = Button(
-            text="⏹  Durdur", font_size=dp(16),
+            text="Durdur", font_size=dp(16),
             background_color=(0.6, 0.15, 0.15, 1),
             background_normal="", disabled=True
         )
@@ -205,7 +154,6 @@ class StockCheckerApp(App):
         btn_row.add_widget(self.stop_btn)
         root.add_widget(btn_row)
 
-        # Durum
         self.status_label = Label(
             text="Bekleniyor...", font_size=dp(14),
             size_hint_y=None, height=dp(30),
@@ -213,10 +161,9 @@ class StockCheckerApp(App):
         )
         root.add_widget(self.status_label)
 
-        # Log
         scroll = ScrollView(size_hint_y=1)
         self.log_label = Label(
-            text="", font_size=dp(12), halign="left", valign="top",
+            text="", font_size=dp(11), halign="left", valign="top",
             color=(0.65, 0.65, 0.65, 1), markup=True,
             text_size=(Window.width - dp(40), None),
             size_hint_y=None
@@ -236,7 +183,7 @@ class StockCheckerApp(App):
     def start_checking(self, *args):
         url = self.url_input.text.strip()
         if not url or not url.startswith("http"):
-            self.show_popup("Uyarı", "Geçerli bir URL girin.")
+            self.show_popup("Uyari", "Gecerli bir URL girin.")
             return
 
         try:
@@ -249,11 +196,10 @@ class StockCheckerApp(App):
         self.check_count = 0
         self.start_btn.disabled = True
         self.stop_btn.disabled = False
-        self.status_label.text = "🔄 Takip aktif..."
+        self.status_label.text = "Takip aktif..."
         self.status_label.color = (0.4, 0.7, 1, 1)
-        self.log(f"Takip başladı — her {interval} dk")
+        self.log(f"Takip basladi - her {interval} dk")
 
-        # İlk kontrolü hemen yap, sonrakileri interval ile
         self.do_check()
 
     def stop_checking(self, *args):
@@ -263,7 +209,7 @@ class StockCheckerApp(App):
             self.scheduled_event = None
         self.start_btn.disabled = False
         self.stop_btn.disabled = True
-        self.status_label.text = "⏹ Durduruldu"
+        self.status_label.text = "Durduruldu"
         self.status_label.color = (0.7, 0.7, 0.7, 1)
         self.log("Takip durduruldu.")
 
@@ -271,7 +217,7 @@ class StockCheckerApp(App):
         if not self.running:
             return
         self.check_count += 1
-        self.status_label.text = f"🔄 Kontrol #{self.check_count}..."
+        self.status_label.text = f"Kontrol #{self.check_count}..."
         threading.Thread(target=self._check_thread, daemon=True).start()
 
     def _check_thread(self):
@@ -289,31 +235,27 @@ class StockCheckerApp(App):
         self.running = False
         self.start_btn.disabled = False
         self.stop_btn.disabled = True
-        self.status_label.text = "🎉 STOKTA!"
+        self.status_label.text = "STOKTA!"
         self.status_label.color = (0.2, 0.9, 0.3, 1)
-        self.log(f"✅ #{self.check_count} — STOKTA! ({detail})")
+        self.log(f"STOKTA! ({detail})")
 
-        android_vibrate(1500)
-        android_notify(
-            "🎉 Ürün Stoğa Girdi!",
-            f"{detail} — Hemen kontrol et!",
-            self.url_input.text.strip()
-        )
-        self.show_popup("🎉 STOKTA!", f"Ürün stoğa girdi!\n{detail}\n\nHemen kontrol edin!")
+        vibrate(2.0)
+        notify("Urun Stoga Girdi!", f"{detail} - Hemen kontrol et!")
+        self.show_popup("STOKTA!", f"Urun stoga girdi!\n{detail}\n\nHemen kontrol edin!")
 
     def _on_no_stock(self, detail):
         if not self.running:
             return
-        self.log(f"❌ #{self.check_count} — {detail}")
+        self.log(f"#{self.check_count} - {detail}")
         ts = datetime.now().strftime("%H:%M:%S")
-        self.status_label.text = f"🔄 Aktif — #{self.check_count} ({ts})"
+        self.status_label.text = f"Aktif - #{self.check_count} ({ts})"
         self._schedule_next()
 
     def _on_error(self, err):
         if not self.running:
             return
-        self.log(f"⚠️ #{self.check_count} — {err}")
-        self.status_label.text = f"⚠️ Hata — tekrar denenecek"
+        self.log(f"#{self.check_count} - Hata: {err}")
+        self.status_label.text = "Hata - tekrar denenecek"
         self._schedule_next()
 
     def _schedule_next(self):
